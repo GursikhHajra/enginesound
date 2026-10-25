@@ -34,18 +34,31 @@ small{color:var(--mut);display:block;margin-top:8px;line-height:1.4}
 <div class="card">
  <label><span>Volume</span><span id="vv">70</span></label><input type="range" id="vol" min="0" max="100" value="70">
  <label><span>Pops and bangs volume</span><span id="pvv">150</span></label><input type="range" id="pv" min="0" max="400" value="150">
+ <label style="margin-top:8px"><span>Real exhaust pop recording (optional)</span></label><input id="popFile" type="file" accept="audio/*" style="width:100%" onchange="loadPopSample(this.files[0])"><small id="popStatus">Using synthesized pops. Load a short, isolated exhaust-pop recording to use real recorded pops.</small>
  <label><span>Bluetooth delay compensation (ms)</span><span id="lv">200</span></label><input type="range" id="lat" min="0" max="400" step="10" value="200">
  <button id="gasb" style="width:100%;margin-top:12px;padding:20px;touch-action:none;user-select:none;-webkit-user-select:none" onpointerdown="gas=true" onpointerup="gas=false" onpointerleave="gas=false" onpointercancel="gas=false" oncontextmenu="return false">Hold to rev, release for pops and bangs</button>
  <div class="row" style="margin-top:12px"><button id="tm" style="flex:1">GPS drive (tap for test)</button><button id="demo" style="flex:1">▶ Play demo run</button></div>
  <div id="tw" style="display:none"><label><span>Simulated speed</span><span id="tv">0</span></label><input type="range" id="ts" min="0" max="250" value="0"></div>
  <small>Test mode lets you try the sound without driving: drag the speed slider up and down. Quick drags act like pressing the gas.</small>
 </div>
+<div class="card"><b>Extra recorded rev sounds (online)</b>
+ <label><span>Rev sound</span><span>CC0</span></label>
+ <select id="extraRev" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg)">
+  <option value="https://sfxmint.com/dl/car-revving-03.mp3">Rev 03 · short</option>
+  <option value="https://sfxmint.com/dl/car-revving-04.mp3">Rev 04 · medium</option>
+  <option value="https://sfxmint.com/dl/car-revving-02.mp3">Rev 02 · deeper</option>
+  <option value="https://sfxmint.com/dl/car-revving-01.mp3">Rev 01 · longer</option>
+ </select>
+ <div class="row" style="margin-top:10px"><button id="previewExtra" style="flex:1">▶ Preview rev</button><button id="stopExtra" style="flex:1">■ Stop sound</button></div>
+ <label style="justify-content:flex-start;gap:8px"><input type="checkbox" id="autoExtra"><span>Play a rev accent when I press the gas</span></label>
+ <small>These generic CC0 rev recordings can be used with any car preset as a short rev accent; they are not exact recordings of the selected make/model or a continuous engine loop. Internet is required. <a href="https://sfxmint.com/sounds/car-revving" target="_blank" rel="noopener">Source and license</a>.</small>
+</div>
 <div class="card"><b>Use a real recording</b>
  <div class="row" style="margin-top:10px"><span style="width:44px">Low</span><input type="file" accept="audio/*" style="flex:1;min-width:0" onchange="loadSample(this.files[0],0)"><input type="number" id="r0" value="1000" style="width:72px"></div>
  <div class="row" style="margin-top:8px"><span style="width:44px">Mid</span><input type="file" accept="audio/*" style="flex:1;min-width:0" onchange="loadSample(this.files[0],1)"><input type="number" id="r1" value="3000" style="width:72px"></div>
  <div class="row" style="margin-top:8px"><span style="width:44px">High</span><input type="file" accept="audio/*" style="flex:1;min-width:0" onchange="loadSample(this.files[0],2)"><input type="number" id="r2" value="6000" style="width:72px"></div>
  
- <button style="width:100%;margin-top:10px" onclick="useScrub()">Use the rev clip as the engine (experimental)</button>
+ <button style="width:100%;margin-top:10px" onclick="useScrub()">Use built-in V12 rev clip as engine (experimental)</button>
  <button style="width:100%;margin-top:10px" onclick="playRev()">Play the real V12 rev clip (first 5 seconds)</button>
  <button style="width:100%;margin-top:10px" onclick="loadEmb()">Use built-in V12 sample (from your Lamborghini clip)</button>
  <button id="synth" style="width:100%;margin-top:10px" onclick="useSynth()">Back to synth sound</button>
@@ -84,10 +97,51 @@ const CARS={
  bb:{n:'Big-block V8',cyl:8,idle:650,red:5800,g:[8,14,20,28,38,50],cut:.6,drv:10,rough:.3,sub:.9},
  svj:{n:'Aventador SVJ-style V12',cyl:12,idle:900,red:8700,g:[10,17,25,34,46,62,97],cut:1.2,drv:4,rough:.08,sub:.3}
 };
+// Named vehicle presets. These preserve the existing generic profiles and bundled V12 audio;
+// model-specific presets use distinct engine parameters, while the optional recorded accents remain generic.
+Object.assign(CARS,{
+ svjReal:{n:'Lamborghini Aventador SVJ · V12',cyl:12,idle:900,red:8700,g:[10,17,25,34,46,62,97],cut:1.2,drv:4,rough:.08,sub:.3},
+ ferrari488:{n:'Ferrari 488 · twin-turbo V8',cyl:8,idle:950,red:8000,g:[10,17,25,34,45,62,78],cut:1.15,drv:4,rough:.1,sub:.3,turbo:1},
+ bmwM3:{n:'BMW M3 · inline-6',cyl:6,idle:750,red:7200,g:[9,16,24,33,44,59],cut:.95,drv:5,rough:.12,sub:.32,turbo:1},
+ gtr:{n:'Nissan GT-R · twin-turbo V6',cyl:6,idle:750,red:7000,g:[9,16,24,33,44,58],cut:.9,drv:5,rough:.16,sub:.45,turbo:1},
+ mustangGT:{n:'Ford Mustang GT · V8',cyl:8,idle:700,red:7200,g:[8,14,22,31,42,56],cut:.75,drv:8,rough:.24,sub:.72},
+ hellcat:{n:'Dodge Challenger Hellcat · supercharged V8',cyl:8,idle:650,red:6200,g:[8,14,21,30,41,55],cut:.65,drv:9,rough:.28,sub:.85,turbo:1},
+ supra:{n:'Toyota Supra · turbo inline-6',cyl:6,idle:800,red:7200,g:[10,17,25,34,46,61],cut:1,drv:5,rough:.12,sub:.3,turbo:1},
+ porscheGT3:{n:'Porsche 911 GT3 · flat-6',cyl:6,idle:950,red:9000,g:[10,18,27,37,49,65,80],cut:1.2,drv:4,rough:.1,sub:.28}
+});
 let car='v10',A=null,run=false,test=false;
 const $=id=>document.getElementById(id);
+// Optional CC0 rev accents. Kept separate from the RPM-driven engine layer.
+let extraAudio=null,extraLast=0;
+function playExtraRev(){
+ const url=$('extraRev').value;
+ if(!extraAudio || extraAudio.src!==url){if(extraAudio){extraAudio.pause();extraAudio.currentTime=0}extraAudio=new Audio(url);extraAudio.preload='auto';extraAudio.volume=Math.min(1,(+$('vol').value/100)*.9)}
+ extraAudio.volume=Math.min(1,(+$('vol').value/100)*.9);extraAudio.currentTime=0;
+ const p=extraAudio.play();if(p&&p.catch)p.catch(()=>{$('sn').textContent='Could not load the online rev sound. Check your internet connection and try Preview rev.'});
+}
+$('previewExtra').onclick=playExtraRev;
+$('stopExtra').onclick=()=>{if(extraAudio){extraAudio.pause();extraAudio.currentTime=0}};
+$('extraRev').onchange=()=>{if(extraAudio){extraAudio.pause();extraAudio=null}};
+
 const cd=$('cars');
-for(const k in CARS){const b=document.createElement('button');b.textContent=CARS[k].n;b.dataset.k=k;b.onclick=()=>{car=k;mark();if(window.SCR&&window.SCR.on)window.SCR.on=false;try{localStorage.setItem('car',k)}catch(e){}};cd.appendChild(b)}
+for(const k in CARS){
+ const b=document.createElement('button');
+ b.textContent=CARS[k].n;b.dataset.k=k;
+ b.onclick=()=>{
+  car=k;mark();
+  if(window.SCR&&window.SCR.on)window.SCR.on=false;
+  // The bundled recordings are a V12 set; don't accidentally use them for other engine types.
+  if(S===L && k!=='v12' && k!=='svj') useSynth(true);
+  try{localStorage.setItem('car',k)}catch(e){}
+  if((k==='v12'||k==='svj') && !L.some(Boolean)){
+   $('sn').textContent='Loading the built-in V12 recordings…';
+   loadEmb();
+  }else if(k!=='v12'&&k!=='svj'){
+   $('sn').textContent='Using the '+CARS[k].n+' engine profile. Model presets shape the synthesized sound; the optional online rev accents are generic recordings, not verified recordings of this exact car. Your built-in V12 clips are preserved.';
+  }
+ };
+ cd.appendChild(b);
+}
 function mark(){[...cd.children].forEach(b=>b.classList.toggle('on',b.dataset.k===car))}try{const sv=localStorage.getItem('car');if(sv&&CARS[sv])car=sv}catch(e){}mark();
 
 // ---- state
@@ -157,15 +211,81 @@ function build(){
 }
 function curve(k){const n=1024,c=new Float32Array(n);for(let i=0;i<n;i++){const x=i*2/n-1;c[i]=Math.tanh(x*k)}return c}
 let thrS=0,coolT=0,gas=false,startT=0;
+let popBuf=null;
+async function loadPopSample(file){
+ if(!file)return;
+ try{
+  if(!A)A=build();
+  await A.C.resume();
+  const bytes=await file.arrayBuffer();
+  const decoded=await A.C.decodeAudioData(bytes.slice(0));
+  if(decoded.duration<0.03)throw new Error('Recording is too short');
+  popBuf=decoded;
+  $('popStatus').textContent='Real exhaust-pop recording loaded: '+file.name+' ('+decoded.duration.toFixed(2)+' s).';
+ }catch(e){
+  popBuf=null;
+  $('popStatus').textContent='Could not load recording. Try a valid WAV or MP3 file.';
+ }
+}
 function bov(a,vol){
  const C=a.C,s=C.createBufferSource();s.buffer=a.nb;const f=C.createBiquadFilter();f.type='highpass';f.frequency.value=2500;
  const g=C.createGain();g.gain.setValueAtTime(.7*vol,C.currentTime);g.gain.exponentialRampToValueAtTime(.001,C.currentTime+.5);
  s.connect(f);f.connect(g);g.connect(a.C.destination);s.start(C.currentTime,Math.random()*.4,.55);
 }
 function pop(a,amt){
- const C=a.C,s=C.createBufferSource();s.buffer=a.nb;const g=C.createGain(),f=C.createBiquadFilter();f.type='bandpass';f.frequency.value=700+Math.random()*900;
- g.gain.setValueAtTime(amt*3,C.currentTime);g.gain.exponentialRampToValueAtTime(.001,C.currentTime+.09);const th=C.createOscillator(),tg=C.createGain();th.frequency.setValueAtTime(140,C.currentTime);th.frequency.exponentialRampToValueAtTime(45,C.currentTime+.08);tg.gain.setValueAtTime(amt*2,C.currentTime);tg.gain.exponentialRampToValueAtTime(.001,C.currentTime+.1);th.connect(tg);tg.connect(a.C.destination);th.start();th.stop(C.currentTime+.12);
- s.connect(f);f.connect(g);g.connect(a.C.destination);s.start(C.currentTime,Math.random()*.5,.09);
+ const C=a.C,t=C.currentTime;
+ const strength=Math.max(0,Math.min(1.8,amt));
+ if(strength<.025)return;
+ const profiles={
+  v10:{bright:1500,body:112,tail:.072,crackle:.28,rate:1.04},
+  v8:{bright:880,body:72,tail:.105,crackle:.18,rate:.90},
+  i6:{bright:1250,body:108,tail:.085,crackle:.36,rate:1.00},
+  dsl:{bright:650,body:54,tail:.125,crackle:.08,rate:.80},
+  flat6:{bright:1850,body:96,tail:.063,crackle:.24,rate:1.10},
+  v12:{bright:1780,body:90,tail:.061,crackle:.23,rate:1.08},
+  rot:{bright:2200,body:105,tail:.052,crackle:.50,rate:1.14},
+  i4t:{bright:1580,body:116,tail:.076,crackle:.46,rate:1.02},
+  bike:{bright:2050,body:138,tail:.046,crackle:.17,rate:1.20},
+  bb:{bright:730,body:58,tail:.12,crackle:.14,rate:.84},
+  svj:{bright:2050,body:92,tail:.055,crackle:.30,rate:1.12},
+  svjReal:{bright:2050,body:92,tail:.055,crackle:.30,rate:1.12},
+  ferrari488:{bright:1720,body:102,tail:.069,crackle:.38,rate:1.06},
+  bmwM3:{bright:1360,body:100,tail:.083,crackle:.24,rate:1.00},
+  gtr:{bright:1060,body:122,tail:.096,crackle:.30,rate:.96},
+  mustangGT:{bright:850,body:74,tail:.105,crackle:.20,rate:.90},
+  hellcat:{bright:780,body:66,tail:.115,crackle:.17,rate:.88},
+  supra:{bright:1450,body:108,tail:.075,crackle:.35,rate:1.02},
+  porscheGT3:{bright:1950,body:96,tail:.060,crackle:.25,rate:1.12},
+  i4:{bright:1200,body:125,tail:.080,crackle:.38,rate:.98},
+  i4t:{bright:1580,body:116,tail:.076,crackle:.46,rate:1.02}
+ };
+ const p=profiles[car]||profiles.v10;
+ if(popBuf){
+  const src=C.createBufferSource();src.buffer=popBuf;
+  const filt=C.createBiquadFilter();filt.type='lowpass';filt.frequency.value=p.bright*2.4;
+  const hp=C.createBiquadFilter();hp.type='highpass';hp.frequency.value=Math.max(70,p.body*.65);
+  const gain=C.createGain();src.playbackRate.value=p.rate*(.92+Math.random()*.16);
+  gain.gain.setValueAtTime(Math.max(.0001,Math.min(1.5,strength*1.25)),t);
+  gain.gain.setTargetAtTime(.0001,t+Math.max(.04,popBuf.duration*.7),Math.max(.015,popBuf.duration*.12));
+  src.connect(hp);hp.connect(filt);filt.connect(gain);gain.connect(a.master);src.start(t);return;
+ }
+ const dur=p.tail*(.75+Math.random()*.65);
+ const s=C.createBufferSource();s.buffer=a.nb;
+ const hp=C.createBiquadFilter();hp.type='highpass';hp.frequency.value=Math.max(180,p.bright*.32)*(.85+Math.random()*.4);hp.Q.value=.55;
+ const bp=C.createBiquadFilter();bp.type='bandpass';bp.frequency.value=p.bright*(.68+Math.random()*.75);bp.Q.value=.55+Math.random()*1.5;
+ const lp=C.createBiquadFilter();lp.type='lowpass';lp.frequency.value=p.bright*2.5;
+ const ng=C.createGain();ng.gain.setValueAtTime(.0001,t);ng.gain.linearRampToValueAtTime((.32+p.crackle*.12)*strength,t+.002+Math.random()*.005);ng.gain.exponentialRampToValueAtTime(.0001,t+dur);
+ s.connect(hp);hp.connect(bp);bp.connect(lp);lp.connect(ng);ng.connect(a.master);s.start(t,Math.random()*.65,dur);
+ const th=C.createOscillator(),tg=C.createGain();th.type='sine';
+ th.frequency.setValueAtTime(p.body*(.82+Math.random()*.36),t);th.frequency.exponentialRampToValueAtTime(Math.max(28,p.body*.42),t+dur*.75);
+ tg.gain.setValueAtTime(.0001,t);tg.gain.linearRampToValueAtTime((.16+(p.body<85?.07:0))*strength,t+.002);tg.gain.exponentialRampToValueAtTime(.0001,t+dur);
+ th.connect(tg);tg.connect(a.master);th.start(t);th.stop(t+dur+.015);
+ if(Math.random()<p.crackle){
+  const delay=.025+Math.random()*.065,s2=C.createBufferSource();s2.buffer=a.nb;
+  const f2=C.createBiquadFilter();f2.type='bandpass';f2.frequency.value=p.bright*(.9+Math.random()*.8);f2.Q.value=1.1+Math.random()*1.2;
+  const g2=C.createGain();g2.gain.setValueAtTime(.0001,t+delay);g2.gain.linearRampToValueAtTime(.13*strength,t+delay+.002);g2.gain.exponentialRampToValueAtTime(.0001,t+delay+.035+Math.random()*.025);
+  s2.connect(f2);f2.connect(g2);g2.connect(a.master);s2.start(t+delay,Math.random()*.75,.07);
+ }
 }
 
 // ---- main loop
@@ -186,6 +306,7 @@ function tick(){
  thr=vp<1&&!test?Math.max(0,a/3):(a<-.9?0:Math.min(1,Math.max(0,.18+a/3.2)));
  if(test&&vp<.3)thr=Math.max(0,a/3);
  if(gas)thr=1;
+ if($('autoExtra').checked && gas && prevThr<.75 && now-extraLast>1200){extraLast=now;playExtraRev()}
  // gear
  const G=P.g,top=G.length-1;let g=Math.min(gear,top);
  while(g<top&&vp/G[g]>.92)g++;
@@ -206,7 +327,16 @@ function tick(){
  if(!A)return;
  if(lastCar!==car){A.sh.curve=curve(P.drv);lastCar=car;A.ot.frequency.value=0;A.g3.gain.value=P.sub;A.lg.gain.value=P.clat?.35:0;A.lfo.frequency.value=12}
  const C=A.C,t=C.currentTime,f=rpm/60*P.cyl/2;
- const X={v10:{pf:220,fb:.55,dk:.3,jit:.06,nz:.3,f1:380,f2:900,rz:.6,pat:[1,.9]},v8:{pf:110,fb:.6,dk:.5,jit:.18,nz:.25,f1:150,f2:420,rz:.7,pat:[1,.65,.9,.6,.95,.7,.85,.6]},i6:{pf:150,fb:.55,dk:.35,jit:.05,nz:.25,f1:260,f2:700,rz:.5,pat:[1,.9]},dsl:{pf:80,fb:.45,dk:.18,jit:.15,nz:.8,f1:110,f2:350,rz:.5,pat:[1,.7,.9]},flat6:{pf:170,fb:.5,dk:.3,jit:.1,nz:.3,f1:300,f2:800,rz:.5,pat:[1,.85,.95]},v12:{pf:260,fb:.5,dk:.28,jit:.03,nz:.2,f1:400,f2:1100,rz:.5,pat:[1,.95]},rot:{pf:200,fb:.4,dk:.22,jit:.02,nz:.7,f1:500,f2:1400,rz:.6,pat:[1,.9]},i4t:{pf:190,fb:.5,dk:.3,jit:.05,nz:.3,f1:280,f2:750,rz:.5,pat:[1,.8]},bike:{pf:300,fb:.4,dk:.25,jit:.02,nz:.4,f1:600,f2:1600,rz:.6,pat:[1,.9]},bb:{pf:85,fb:.65,dk:.6,jit:.22,nz:.3,f1:120,f2:330,rz:.7,pat:[1,.6,.9,.55,.95,.65,.8,.6]},svj:{pf:260,fb:.5,dk:.28,jit:.03,nz:.2,f1:400,f2:1100,rz:.5,pat:[1,.95]}}[car];
+ const X={v10:{pf:220,fb:.55,dk:.3,jit:.06,nz:.3,f1:380,f2:900,rz:.6,pat:[1,.9]},v8:{pf:110,fb:.6,dk:.5,jit:.18,nz:.25,f1:150,f2:420,rz:.7,pat:[1,.65,.9,.6,.95,.7,.85,.6]},i6:{pf:150,fb:.55,dk:.35,jit:.05,nz:.25,f1:260,f2:700,rz:.5,pat:[1,.9]},dsl:{pf:80,fb:.45,dk:.18,jit:.15,nz:.8,f1:110,f2:350,rz:.5,pat:[1,.7,.9]},flat6:{pf:170,fb:.5,dk:.3,jit:.1,nz:.3,f1:300,f2:800,rz:.5,pat:[1,.85,.95]},v12:{pf:260,fb:.5,dk:.28,jit:.03,nz:.2,f1:400,f2:1100,rz:.5,pat:[1,.95]},rot:{pf:200,fb:.4,dk:.22,jit:.02,nz:.7,f1:500,f2:1400,rz:.6,pat:[1,.9]},i4t:{pf:190,fb:.5,dk:.3,jit:.05,nz:.3,f1:280,f2:750,rz:.5,pat:[1,.8]},bike:{pf:300,fb:.4,dk:.25,jit:.02,nz:.4,f1:600,f2:1600,rz:.6,pat:[1,.9]},bb:{pf:85,fb:.65,dk:.6,jit:.22,nz:.3,f1:120,f2:330,rz:.7,pat:[1,.6,.9,.55,.95,.65,.8,.6]},svj:{pf:260,fb:.5,dk:.28,jit:.03,nz:.2,f1:400,f2:1100,rz:.5,pat:[1,.95]}}[car] || ({
+  svjReal:{pf:260,fb:.5,dk:.28,jit:.03,nz:.2,f1:400,f2:1100,rz:.5,pat:[1,.95]},
+  ferrari488:{pf:110,fb:.6,dk:.5,jit:.18,nz:.25,f1:150,f2:420,rz:.7,pat:[1,.65,.9,.6,.95,.7,.85,.6]},
+  bmwM3:{pf:150,fb:.55,dk:.35,jit:.05,nz:.25,f1:260,f2:700,rz:.5,pat:[1,.9]},
+  gtr:{pf:150,fb:.55,dk:.35,jit:.05,nz:.25,f1:260,f2:700,rz:.5,pat:[1,.9]},
+  mustangGT:{pf:110,fb:.6,dk:.5,jit:.18,nz:.25,f1:150,f2:420,rz:.7,pat:[1,.65,.9,.6,.95,.7,.85,.6]},
+  hellcat:{pf:85,fb:.65,dk:.6,jit:.22,nz:.3,f1:120,f2:330,rz:.7,pat:[1,.6,.9,.55,.95,.65,.8,.6]},
+  supra:{pf:150,fb:.55,dk:.35,jit:.05,nz:.25,f1:260,f2:700,rz:.5,pat:[1,.9]},
+  porscheGT3:{pf:170,fb:.5,dk:.3,jit:.1,nz:.3,f1:300,f2:800,rz:.5,pat:[1,.85,.95]}
+})[car];
  window.ENG={f:f,thr:thr,cut:(500+f*6+thr*2500)*P.cut,pf:X.pf,fb:X.fb,dk:X.dk,jit:X.jit,nz:X.nz*(.4+thr),f1:X.f1,f2:X.f2,rz:X.rz,pat:X.pat,gn:4,pos:.15+Math.min(1,Math.max(0,(rpm-P.idle)/(P.red-P.idle)))*2.3};
  window._ig.gain.setTargetAtTime(thr*(.15+rpm/P.red)*(P.turbo?1:.7),t,.05);window._ibp.frequency.setTargetAtTime(300+rpm*.35,t,.05);
  A.o1.frequency.setTargetAtTime(f,t,.02);A.o2.frequency.setTargetAtTime(f*2,t,.02);A.o3.frequency.setTargetAtTime(f/2,t,.02);
@@ -218,10 +348,10 @@ function tick(){
  A.master.gain.setTargetAtTime(lvl,t,.03);
  if(S)blend(t);
  const pv=+$('pv').value/100;
- if(A&&thr<.1&&rpm>P.idle*2.2&&!P.clat&&Math.random()<dt*7)pop(A,vol*pv*.5*(.5+Math.random()*.5));thrS=thrS*.92+thr*.08;if(coolT>0)coolT-=dt;
+ if(A&&thr<.06&&rpm>P.idle*2.6&&!P.clat&&Math.random()<dt*2.2)pop(A,vol*pv*.22*(.5+Math.random()*.5));thrS=thrS*.92+thr*.08;if(coolT>0)coolT-=dt;
  if(thrS>.15&&thr<.2&&rpm>P.idle*1.8&&coolT<=0){coolT=.35;thrS=0;
   if(P.turbo)bov(A,vol*pv);
-  if(!P.clat){const n=5+Math.floor(Math.random()*6);for(let i=0;i<n;i++)setTimeout(()=>pop(A,vol*pv*(.5+.5*rpm/P.red)*(.6+Math.random()*.6)),80+i*(60+Math.random()*110))}
+  if(!P.clat&&rpm>P.idle*2.5){const n=2+Math.floor(Math.random()*3);for(let i=0;i<n;i++)setTimeout(()=>{if(run&&A)pop(A,vol*pv*(.22+.35*rpm/P.red)*(.55+Math.random()*.55))},55+i*(85+Math.random()*145))}
  }
 }
 $('go').onclick=()=>{
