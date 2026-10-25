@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Engine Sound</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4f4f2;--fg:#17181a;--card:#fff;--mut:#6b6f76;--acc:#e5391f;--line:#d9dadc}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101113;--fg:#f2f2f0;--card:#1b1c1f;--mut:#9a9ea6;--acc:#ff5a3d;--line:#2d2f34}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;max-width:520px;margin-inline:auto}
+h1{font-size:22px;margin:4px 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.cars{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+button.on{border-color:var(--acc);background:var(--acc);color:#fff}
+#go{width:100%;font-weight:700;font-size:18px;padding:16px;background:var(--acc);color:#fff;border:0}
+.read{display:grid;grid-template-columns:repeat(4,1fr);text-align:center;gap:6px}
+.read b{display:block;font-size:24px;font-variant-numeric:tabular-nums}.read span{font-size:12px;color:var(--mut)}
+.bar{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin-top:12px}.bar i{display:block;height:100%;width:0;background:var(--acc)}
+label{display:flex;justify-content:space-between;font-size:14px;color:var(--mut);margin-top:10px}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.row{display:flex;gap:8px;align-items:center}
+small{color:var(--mut);display:block;margin-top:8px;line-height:1.4}
+</style></head><body>
+<h1>Engine Sound</h1>
+<div class="card"><div class="cars" id="cars"></div></div>
+<button id="go">Start</button>
+<div class="card" style="margin-top:12px">
+ <div class="read"><div><b id="rs">0</b><span>km/h</span></div><div><b id="rr">0</b><span>rpm</span></div><div><b id="rg">1</b><span>gear</span></div><div><b id="rt">0</b><span>throttle %</span></div></div>
+ <div class="bar"><i id="rb"></i></div>
+ <div class="row" style="margin-top:10px"><small style="margin:0;width:64px">Throttle</small><div class="bar" style="flex:1;margin:0"><i id="tb"></i></div></div>
+ <div class="row" style="margin-top:8px"><small style="margin:0;width:64px">Brake</small><div class="bar" style="flex:1;margin:0"><i id="bk" style="background:#3b82f6"></i></div></div>
+ <small id="st">Tap Start, then drive. GPS needs to be allowed.</small>
+</div>
+<div class="card">
+ <label><span>Volume</span><span id="vv">70</span></label><input type="range" id="vol" min="0" max="100" value="70">
+ <label><span>Pops and bangs volume</span><span id="pvv">150</span></label><input type="range" id="pv" min="0" max="400" value="150">
+ <label><span>Bluetooth delay compensation (ms)</span><span id="lv">200</span></label><input type="range" id="lat" min="0" max="400" step="10" value="200">
+ <button id="gasb" style="width:100%;margin-top:12px;padding:20px;touch-action:none;user-select:none;-webkit-user-select:none" onpointerdown="gas=true" onpointerup="gas=false" onpointerleave="gas=false" onpointercancel="gas=false" oncontextmenu="return false">Hold to rev, release for pops and bangs</button>
+ <div class="row" style="margin-top:12px"><button id="tm" style="flex:1">GPS drive (tap for test)</button><button id="demo" style="flex:1">▶ Play demo run</button></div>
+ <div id="tw" style="display:none"><label><span>Simulated speed</span><span id="tv">0</span></label><input type="range" id="ts" min="0" max="250" value="0"></div>
+ <small>Test mode lets you try the sound without driving: drag the speed slider up and down. Quick drags act like pressing the gas.</small>
+</div>
+<div class="card"><b>Use a real recording</b>
+ <div class="row" style="margin-top:10px"><span style="width:44px">Low</span><input type="file" accept="audio/*" style="flex:1;min-width:0" onchange="loadSample(this.files[0],0)"><input type="number" id="r0" value="1000" style="width:72px"></div>
+ <div class="row" style="margin-top:8px"><span style="width:44px">Mid</span><input type="file" accept="audio/*" style="flex:1;min-width:0" onchange="loadSample(this.files[0],1)"><input type="number" id="r1" value="3000" style="width:72px"></div>
+ <div class="row" style="margin-top:8px"><span style="width:44px">High</span><input type="file" accept="audio/*" style="flex:1;min-width:0" onchange="loadSample(this.files[0],2)"><input type="number" id="r2" value="6000" style="width:72px"></div>
+ 
+ <button id="synth" style="width:100%;margin-top:10px" onclick="useSynth()">Back to synth sound</button>
+ <small id="sn">Load up to three steady-RPM engine clips (low, mid, high) and type the rpm each was recorded at in the box on the right. The app blends between them as you drive. One clip alone works too.</small></div>
+<script>
+let S=null;
+async function loadSample(file){
+ if(!file)return;
+ if(!A)A=build();
+ A.C.resume();
+ try{
+  const buf=await A.C.decodeAudioData(await file.arrayBuffer());
+  useSynth(true);
+  const src=A.C.createBufferSource();src.buffer=buf;src.loop=true;
+  src.loopStart=buf.duration*.1;src.loopEnd=buf.duration*.9;
+  src.connect(A.master);src.start(0,buf.duration*.1);
+  S={src};A.env.disconnect();
+  $('sn').textContent='Loaded: '+file.name+'. Press Start if you haven\u2019t yet.';
+ }catch(e){$('sn').textContent='Could not read that file. Try an mp3 or wav.'}
+}
+function useSynth(quiet){
+ if(S){try{S.src.stop()}catch(e){}S=null}
+ if(!quiet)$('sn').textContent='Using the synth sound.';
+}
+const CARS={
+ v10:{n:'Italian V10',cyl:10,idle:900,red:8500,g:[9,15,22,30,40,52,70],cut:1.3,drv:5,rough:.12,sub:.35},
+ v8:{n:'Muscle V8',cyl:8,idle:700,red:6200,g:[8,14,21,30,40,55],cut:.7,drv:9,rough:.25,sub:.8},
+ i6:{n:'Turbo inline-6',cyl:6,idle:800,red:7000,g:[10,17,25,34,45,60],cut:1,drv:4,rough:.1,sub:.3,turbo:1},
+ dsl:{n:'Diesel truck',cyl:6,idle:600,red:3200,g:[7,12,18,25,34,45],cut:.45,drv:12,rough:.4,sub:.9,clat:1},
+ flat6:{n:'Flat-6 sports',cyl:6,idle:900,red:8400,g:[10,17,25,34,45,60,75],cut:1.1,drv:5,rough:.12,sub:.4},
+ v12:{n:'Grand tourer V12',cyl:12,idle:900,red:8800,g:[9,15,22,30,40,52,70],cut:1.2,drv:4,rough:.08,sub:.3},
+ rot:{n:'Rotary coupe',cyl:4,idle:900,red:9000,g:[9,15,22,30,40,52],cut:1.4,drv:6,rough:.3,sub:.2},
+ i4t:{n:'Hot hatch turbo-4',cyl:4,idle:850,red:7200,g:[9,15,22,30,40,52],cut:.9,drv:5,rough:.15,sub:.4,turbo:1},
+ bike:{n:'Superbike 4-cyl',cyl:4,idle:1300,red:14000,g:[14,22,30,38,48,60],cut:1.6,drv:5,rough:.2,sub:.1},
+ bb:{n:'Big-block V8',cyl:8,idle:650,red:5800,g:[8,14,20,28,38,50],cut:.6,drv:10,rough:.3,sub:.9}
+};
+let car='v10',A=null,run=false,test=false;
+const $=id=>document.getElementById(id);
+const cd=$('cars');
+for(const k in CARS){const b=document.createElement('button');b.textContent=CARS[k].n;b.dataset.k=k;b.onclick=()=>{car=k;mark();try{localStorage.setItem('car',k)}catch(e){}};cd.appendChild(b)}
+function mark(){[...cd.children].forEach(b=>b.classList.toggle('on',b.dataset.k===car))}try{const sv=localStorage.getItem('car');if(sv&&CARS[sv])car=sv}catch(e){}mark();
+
+// ---- state
+let vEst=0,gpsV=0,gpsT=0,fwdA=0,gpsAcc=0,lin=[0,0,0],grav=null,F=[0,0,0],learn=0;
+let rpm=900,gear=0,shift=0,thr=0,prevThr=0,testV=0,testPrev=0,testA=0;
+
+// ---- sensors
+function startSensors(){
+ if(!navigator.geolocation){$('st').textContent='No GPS available on this device.';return}
+ navigator.geolocation.watchPosition(p=>{
+  const now=performance.now(),v=p.coords.speed;
+  if(v==null||isNaN(v))return;
+  if(gpsT){const dt=(now-gpsT)/1000;if(dt>0.2){gpsAcc=gpsAcc*.5+((v-gpsV)/dt)*.5;
+   if(Math.abs(gpsAcc)>.7&&v>2){for(let i=0;i<3;i++)F[i]+=lin[i]*gpsAcc*.15;learn++;const n=Math.hypot(...F)||1;F=F.map(x=>x/n)}}}
+  gpsV=v;gpsT=now;vEst+=(v-vEst)*.6;
+  $('st').textContent='GPS locked. Drive and listen.';
+ },e=>{$('st').textContent='GPS error: '+e.message+'. Use test mode or allow location.'},{enableHighAccuracy:true,maximumAge:0,timeout:10000});
+ const hm=()=>addEventListener('devicemotion',e=>{
+  const a=e.accelerationIncludingGravity;if(!a||a.x==null)return;
+  const c=[a.x,a.y,a.z];if(!grav)grav=c.slice();
+  grav=grav.map((g,i)=>g*.98+c[i]*.02);
+  lin=lin.map((l,i)=>l*.7+(c[i]-grav[i])*.3);
+ });
+ if(window.DeviceMotionEvent&&DeviceMotionEvent.requestPermission)DeviceMotionEvent.requestPermission().then(r=>{if(r==='granted')hm()}).catch(()=>{});else hm();
+ try{navigator.wakeLock&&navigator.wakeLock.request('screen')}catch(e){}
+}
+
+// ---- audio
+function build(){
+ const C=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+ const mk=(t)=>{const o=C.createOscillator();o.type=t;o.start();return o};
+ const o1=mk('sawtooth'),o2=mk('square'),o3=mk('sine'),ot=mk('sine');
+ const g1=C.createGain(),g2=C.createGain(),g3=C.createGain(),gt=C.createGain();g1.gain.value=.5;g2.gain.value=.18;gt.gain.value=0;
+ o1.connect(g1);o2.connect(g2);o3.connect(g3);ot.connect(gt);
+ const mix=C.createGain();g1.connect(mix);g2.connect(mix);g3.connect(mix);
+ const sh=C.createWaveShaper();sh.oversample='2x';
+ const lp=C.createBiquadFilter();lp.type='lowpass';lp.Q.value=2;
+ const env=C.createGain(),master=C.createGain(),comp=C.createDynamicsCompressor();
+ mix.connect(sh);sh.connect(lp);
+ const nb=C.createBuffer(1,C.sampleRate,C.sampleRate),d=nb.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+ const ns=C.createBufferSource();ns.buffer=nb;ns.loop=true;ns.start();
+ const bp=C.createBiquadFilter();bp.type='bandpass';bp.Q.value=.8;const ng=C.createGain();ns.connect(bp);bp.connect(ng);ng.connect(lp);
+ const lfo=mk('square'),lg=C.createGain();lfo.connect(lg);lg.connect(env.gain);lg.gain.value=0;
+ lp.connect(env);gt.connect(env);env.gain.value=1;env.connect(master);master.connect(comp);comp.connect(C.destination);
+ env.disconnect();gt.disconnect();gt.connect(master);
+ const sp=C.createScriptProcessor(512,0,1),st={ph:0,env:0,k:0,cb:new Float32Array(4096),ci:0,l1:0,l2:0,hp:0,hpx:0,q1a:0,q1b:0,q2a:0,q2b:0};
+ sp.onaudioprocess=ev=>{
+  const o=ev.outputBuffer.getChannelData(0),E=window.ENG,sr=C.sampleRate;
+  if(!E||(typeof S!=='undefined'&&S)){o.fill(0);return}
+  const f=Math.max(5,E.f),per=sr/f,dec=Math.exp(-1/(per*E.dk)),D=Math.min(4000,Math.max(20,Math.round(sr/E.pf))),D2=Math.min(4000,Math.max(20,Math.round(D*1.37))),rr=.97,c1=2*rr*Math.cos(6.283*E.f1/sr),c2=2*rr*Math.cos(6.283*E.f2/sr),d1=rr*rr,a=1-Math.exp(-6.283*Math.min(E.cut,9000)/sr);
+  for(let i=0;i<o.length;i++){
+   st.ph+=f/sr;
+   if(st.ph>=1){st.ph-=1;st.env=(.55+.45*E.thr)*(1-E.jit+Math.random()*2*E.jit)*E.pat[st.k++%E.pat.length]}
+   st.env*=dec;
+   const x=st.env*(E.nz*(Math.random()*2-1)+1);
+   const y=x+E.fb*st.cb[(st.ci-D+4096)&4095]+E.fb*.45*st.cb[(st.ci-D2+4096)&4095];
+   st.cb[st.ci]=y*.98;st.ci=(st.ci+1)&4095;
+   st.l1+=a*(y-st.l1);st.l2+=a*(st.l1-st.l2);
+   const q1=st.l2*.1+c1*st.q1a-d1*st.q1b;st.q1b=st.q1a;st.q1a=q1;const q2=st.l2*.1+c2*st.q2a-d1*st.q2b;st.q2b=st.q2a;st.q2a=q2;const m=st.l2+E.rz*(q1+q2);const h=m-st.hpx+.995*st.hp;st.hpx=m;st.hp=h;
+   o[i]=Math.tanh(h*4);
+  }
+ };
+ sp.connect(master);window._sp=sp;
+ const ib=C.createBufferSource();ib.buffer=nb;ib.loop=true;ib.start();const ibp=C.createBiquadFilter();ibp.type='bandpass';ibp.Q.value=1.2;const ig=C.createGain();ig.gain.value=0;ib.connect(ibp);ibp.connect(ig);ig.connect(master);window._ig=ig;window._ibp=ibp;
+ return{C,o1,o2,o3,ot,g3,gt,sh,lp,env,master,ng,bp,lg,lfo,nb}
+}
+function curve(k){const n=1024,c=new Float32Array(n);for(let i=0;i<n;i++){const x=i*2/n-1;c[i]=Math.tanh(x*k)}return c}
+let thrS=0,coolT=0,gas=false,startT=0;
+function bov(a,vol){
+ const C=a.C,s=C.createBufferSource();s.buffer=a.nb;const f=C.createBiquadFilter();f.type='highpass';f.frequency.value=2500;
+ const g=C.createGain();g.gain.setValueAtTime(.7*vol,C.currentTime);g.gain.exponentialRampToValueAtTime(.001,C.currentTime+.5);
+ s.connect(f);f.connect(g);g.connect(a.C.destination);s.start(C.currentTime,Math.random()*.4,.55);
+}
+function pop(a,amt){
+ const C=a.C,s=C.createBufferSource();s.buffer=a.nb;const g=C.createGain(),f=C.createBiquadFilter();f.type='bandpass';f.frequency.value=700+Math.random()*900;
+ g.gain.setValueAtTime(amt*3,C.currentTime);g.gain.exponentialRampToValueAtTime(.001,C.currentTime+.09);const th=C.createOscillator(),tg=C.createGain();th.frequency.setValueAtTime(140,C.currentTime);th.frequency.exponentialRampToValueAtTime(45,C.currentTime+.08);tg.gain.setValueAtTime(amt*2,C.currentTime);tg.gain.exponentialRampToValueAtTime(.001,C.currentTime+.1);th.connect(tg);tg.connect(a.C.destination);th.start();th.stop(C.currentTime+.12);
+ s.connect(f);f.connect(g);g.connect(a.C.destination);s.start(C.currentTime,Math.random()*.5,.09);
+}
+
+// ---- main loop
+let last=performance.now(),lastCar=null;
+function tick(){
+ const now=performance.now(),dt=Math.min(.1,(now-last)/1000);last=now;
+ const P=CARS[car],lat=+$('lat').value/1000;
+ let v,a;
+ if(test){testV=+$('ts').value/3.6;testA=testA*.85+((testV-testPrev)/dt)*.15;testPrev=testV;v=testV;a=testA;vEst=v}
+ else{
+  const useF=learn>3&&Math.hypot(...F)>.5;
+  a=useF?(F[0]*lin[0]+F[1]*lin[1]+F[2]*lin[2]):gpsAcc;
+  if(now-gpsT>2500){gpsAcc*=.9}
+  vEst=Math.max(0,vEst+a*dt);v=vEst;
+ }
+ const vp=Math.max(0,v+a*lat);
+ prevThr=thr;
+ thr=vp<1&&!test?Math.max(0,a/3):(a<-.9?0:Math.min(1,Math.max(0,.18+a/3.2)));
+ if(test&&vp<.3)thr=Math.max(0,a/3);
+ if(gas)thr=1;
+ // gear
+ const G=P.g,top=G.length-1;let g=Math.min(gear,top);
+ while(g<top&&vp/G[g]>.92)g++;
+ while(g>0&&vp/G[g-1]<.6)g--;
+ if(g!==gear){if(g>gear)shift=.16;if(g>gear&&A&&!P.clat&&thr>.3){const pq=+$('pv').value/100;for(let i=0;i<2;i++)setTimeout(()=>pop(A,.5*pq*(.5+Math.random()*.5)),30+i*70)}gear=g}
+ if(shift>0)shift-=dt;
+ const wheel=Math.min(vp/G[gear],1)*P.red;
+ let target=Math.max(wheel,P.idle+thr*.35*(P.red-P.idle));
+ if(shift>0)target=rpm*.85;
+ if(startT>0){startT-=dt;target=startT>.6?220+Math.random()*80:P.idle*1.5}
+ target=Math.min(target,P.red*.98);
+ const tau=target>rpm?.1:.28;rpm+=(target-rpm)*(1-Math.exp(-dt/tau));
+ rpm+=Math.sin(now/90)*(rpm<P.idle*1.5?14:3);
+ // readouts
+ $('rs').textContent=Math.round(v*3.6);$('rr').textContent=Math.round(rpm);$('rg').textContent=gear+1;$('rt').textContent=Math.round(thr*100);
+ $('rb').style.width=Math.min(100,rpm/P.red*100)+'%';$('tb').style.width=(thr*100)+'%';$('bk').style.width=Math.min(100,Math.max(0,-a*25))+'%';
+ // audio
+ if(!A)return;
+ if(lastCar!==car){A.sh.curve=curve(P.drv);lastCar=car;A.ot.frequency.value=0;A.g3.gain.value=P.sub;A.lg.gain.value=P.clat?.35:0;A.lfo.frequency.value=12}
+ const C=A.C,t=C.currentTime,f=rpm/60*P.cyl/2;
+ const X={v10:{pf:220,fb:.55,dk:.3,jit:.06,nz:.3,f1:380,f2:900,rz:.6,pat:[1,.9]},v8:{pf:110,fb:.6,dk:.5,jit:.18,nz:.25,f1:150,f2:420,rz:.7,pat:[1,.65,.9,.6,.95,.7,.85,.6]},i6:{pf:150,fb:.55,dk:.35,jit:.05,nz:.25,f1:260,f2:700,rz:.5,pat:[1,.9]},dsl:{pf:80,fb:.45,dk:.18,jit:.15,nz:.8,f1:110,f2:350,rz:.5,pat:[1,.7,.9]},flat6:{pf:170,fb:.5,dk:.3,jit:.1,nz:.3,f1:300,f2:800,rz:.5,pat:[1,.85,.95]},v12:{pf:260,fb:.5,dk:.28,jit:.03,nz:.2,f1:400,f2:1100,rz:.5,pat:[1,.95]},rot:{pf:200,fb:.4,dk:.22,jit:.02,nz:.7,f1:500,f2:1400,rz:.6,pat:[1,.9]},i4t:{pf:190,fb:.5,dk:.3,jit:.05,nz:.3,f1:280,f2:750,rz:.5,pat:[1,.8]},bike:{pf:300,fb:.4,dk:.25,jit:.02,nz:.4,f1:600,f2:1600,rz:.6,pat:[1,.9]},bb:{pf:85,fb:.65,dk:.6,jit:.22,nz:.3,f1:120,f2:330,rz:.7,pat:[1,.6,.9,.55,.95,.65,.8,.6]}}[car];
+ window.ENG={f:f,thr:thr,cut:(500+f*6+thr*2500)*P.cut,pf:X.pf,fb:X.fb,dk:X.dk,jit:X.jit,nz:X.nz*(.4+thr),f1:X.f1,f2:X.f2,rz:X.rz,pat:X.pat,gn:4};
+ window._ig.gain.setTargetAtTime(thr*(.15+rpm/P.red)*(P.turbo?1:.7),t,.05);window._ibp.frequency.setTargetAtTime(300+rpm*.35,t,.05);
+ A.o1.frequency.setTargetAtTime(f,t,.02);A.o2.frequency.setTargetAtTime(f*2,t,.02);A.o3.frequency.setTargetAtTime(f/2,t,.02);
+ A.lp.frequency.setTargetAtTime((350+f*3.5+thr*2200)*P.cut,t,.04);
+ A.ng.gain.setTargetAtTime(P.rough*(.3+thr)*.6,t,.05);A.bp.frequency.setTargetAtTime(300+f*2,t,.05);
+ if(P.clat)A.lfo.frequency.setTargetAtTime(Math.max(6,f*.5),t,.05);
+ if(P.turbo){A.ot.frequency.setTargetAtTime(1500+rpm*.9,t,.05);A.gt.gain.setTargetAtTime(Math.max(0,thr-.3)*(rpm/P.red)*.05,t,.1)}
+ const vol=+$('vol').value/100,lvl=(.22+.78*thr)*(shift>0?.25:1)*vol*((rpm>P.red*.955&&thr>.6)?(Math.sin(now/40)>0?1:.2):1);
+ A.master.gain.setTargetAtTime(lvl,t,.03);
+ if(S)blend(t);
+ const pv=+$('pv').value/100;
+ if(A&&thr<.1&&rpm>P.idle*2.2&&!P.clat&&Math.random()<dt*7)pop(A,vol*pv*.5*(.5+Math.random()*.5));thrS=thrS*.92+thr*.08;if(coolT>0)coolT-=dt;
+ if(thrS>.15&&thr<.2&&rpm>P.idle*1.8&&coolT<=0){coolT=.35;thrS=0;
+  if(P.turbo)bov(A,vol*pv);
+  if(!P.clat){const n=5+Math.floor(Math.random()*6);for(let i=0;i<n;i++)setTimeout(()=>pop(A,vol*pv*(.5+.5*rpm/P.red)*(.6+Math.random()*.6)),80+i*(60+Math.random()*110))}
+ }
+}
+$('go').onclick=()=>{
+ if(!run){
+  A=A||build();A.C.resume();run=true;rpm=200;startT=1.3;$('go').textContent='Stop';
+  if(!window._s){startSensors();window._s=1}
+  window._i=setInterval(tick,25);
+ }else{run=false;$('go').textContent='Start';clearInterval(window._i);A.master.gain.value=0}
+};
+$('tm').onclick=()=>{test=!test;$('tm').textContent=test?'Test drive (tap for GPS)':'GPS drive (tap for test)';$('tw').style.display=test?'block':'none'};
+$('ts').oninput=e=>$('tv').textContent=e.target.value+' km/h';
+const L=[null,null,null];
+async function loadSample(file,slot){
+ if(!file)return;
+ if(!A)A=build();
+ A.C.resume();
+ try{
+  const buf=await A.C.decodeAudioData(await file.arrayBuffer());
+  if(L[slot]){try{L[slot].src.stop()}catch(e){}}
+  const src=A.C.createBufferSource();src.buffer=buf;src.loop=true;
+  src.loopStart=buf.duration*.1;src.loopEnd=buf.duration*.9;
+  const g=A.C.createGain();g.gain.value=0;src.connect(g);g.connect(A.master);src.start(0,buf.duration*.1);
+  L[slot]={src:src,g:g};S=L;
+  $('sn').textContent='Loaded '+['low','mid','high'][slot]+': '+file.name;
+ }catch(e){$('sn').textContent='Could not read that file. Try an mp3 or wav.'}
+}
+function useSynth(q){
+ L.forEach((l,i)=>{if(l){try{l.src.stop()}catch(e){}L[i]=null}});S=null;
+ if(!q)$('sn').textContent='Using the synth sound.';
+}
+function blend(t){
+ const pts=[];for(let i=0;i<3;i++)if(L[i])pts.push({l:L[i],r:+$('r'+i).value||1000});
+ pts.sort((a,b)=>a.r-b.r);
+ pts.forEach((p,i)=>{
+  const lo=pts[i-1],hi=pts[i+1];let w;
+  if(rpm<=p.r)w=lo?Math.max(0,(rpm-lo.r)/(p.r-lo.r)):1;
+  else w=hi?Math.max(0,(hi.r-rpm)/(hi.r-p.r)):1;
+  p.l.g.gain.setTargetAtTime(Math.sqrt(w),t,.04);
+  p.l.src.playbackRate.setTargetAtTime(Math.min(4,Math.max(.25,rpm/p.r)),t,.03);
+ });
+}
+$('vol').oninput=e=>$('vv').textContent=e.target.value;
+$('pv').oninput=e=>$('pvv').textContent=e.target.value;
+$('lat').oninput=e=>$('lv').textContent=e.target.value;
+let dTimer=null;
+const KF=[[0,0],[3,40],[8,100],[12,160],[14,170],[16,120],[20,130],[26,200],[28,210],[32,90],[38,40],[44,0]];
+$('demo').onclick=()=>{
+ if(dTimer){clearInterval(dTimer);dTimer=null;$('demo').textContent='▶ Play demo run';return}
+ if(!run)$('go').onclick();
+ if(!test)$('tm').onclick();
+ $('demo').textContent='■ Stop demo';const t0=performance.now();
+ dTimer=setInterval(()=>{
+  const t=(performance.now()-t0)/1000;
+  if(t>=44){clearInterval(dTimer);dTimer=null;$('demo').textContent='▶ Play demo run';return}
+  let i=0;while(KF[i+1][0]<t)i++;
+  const p=KF[i],q=KF[i+1],v=p[1]+(q[1]-p[1])*(t-p[0])/(q[0]-p[0]);
+  $('ts').value=v;$('tv').textContent=Math.round(v)+' km/h';
+ },50);
+};
+</script></body></html>
