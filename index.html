@@ -94,7 +94,8 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 <div class="row"><button class="b p" id="start">Start engine</button><button class="b r" id="rev">Hold to rev</button></div>
 <div class="panel"><h2>Engine</h2>
 <div class="eng" id="engs"></div>
-<label for="vol">Volume</label><input type="range" id="vol" min="0" max="100" value="60"></div>
+<div class="row" style="margin-top:10px"><button class="b" data-v="out" aria-pressed="true">Outside</button><button class="b" data-v="in" aria-pressed="false">Inside cabin</button></div>
+<label for="vol">Volume</label><input type="range" id="vol" min="0" max="100" value="60"><label for="wnd">Wind and road noise</label><input type="range" id="wnd" min="0" max="100" value="30"></div>
 <div class="panel"><h2>Speed source</h2>
 <select id="src" aria-label="Speed source"><option value="gps">GPS</option><option value="obd">Bluetooth OBD (speed + RPM)</option><option value="manual">Manual (test drive)</option></select>
 <div style="height:10px"></div><button class="b" id="bt">Connect Bluetooth OBD</button></div>
@@ -132,7 +133,8 @@ const PR={
  dsl:{cyl:8,idle:650,red:3500,comb:5,fb:.5,res:[80,190,420],gain:[1,.8],nz:1.3,turbo:1,pop:0,drive:1.7}
 };
 const K=[120,72,50,38,30,25.5]; // rpm per km/h in each gear
-const A={rpm:800,load:.1,spd:0,vol:.6,preset:'v8',pops:0,bangQ:0};
+let FX=null,inside=false;
+const A={rpm:800,load:.1,spd:0,vol:.6,preset:'v8',pops:0,bangQ:0,wnd:.15};
 let ctx=null,on=false,mph=false,gps={spd:0,acc:null,last:null},obd={spd:null,rpm:null,dev:null},rev=false;
 let gear=0,shiftT=0,lastShift=0,acc=0,wob=0,burbleT=0,wasRev=false,shiftPop=0;
 
@@ -153,7 +155,7 @@ function mkAudio(){
    if(P.ev){e1+=(90+rs*.18)/sr;e2+=(200+rs*.4)/sr;e3+=(40+rs*.04)/sr;if(e1>1)e1-=1;if(e2>1)e2-=1;if(e3>1)e3-=1;
     const nr=Math.random()*2-1;wn+=(nr-wn)*.02;const a=Math.min(rs/500,1)*(.25+.75*ls);
     const ev=(Math.sin(6.2832*e1)*.5+Math.sin(6.2832*e2)*.3+Math.sin(6.2832*e3)*.3)*a*.2*(.4+Math.min(rs/9000,1));
-    const v=(ev+wn*wind*.5)*vs;o0[i]=v;o1[i]=v;continue;}
+    const v=(ev+wn*wind*A.wnd)*vs;o0[i]=v;o1[i]=v;continue;}
    ph+=rs*P.cyl/120/sr;
    if(ph>=1){ph-=1;ci=(ci+1)%P.cyl;if(P.un)ph+=(ci&1?-1:1)*P.un;env=(.3+.7*ls)*P.gain[ci%P.gain.length]*(1+(Math.random()-.5)*.25);}
    env*=dec;
@@ -170,7 +172,7 @@ function mkAudio(){
    n1+=(nz-n1)*.25;
    const intake=(nz-n1)*ls*ls*.12*Math.min(rs/6000,1.2);
    wn+=(nz-wn)*.02;
-   const road=wn*wind*.5;
+   const road=wn*wind*A.wnd;
    let t=0;
    if(P.turbo){tph+=(1800+rs*1.1)/sr;if(tph>1)tph-=1;t=Math.sin(6.2832*tph)*ls*ls*ls*.01*(rs/7000);}
    if(P.sc){tp2+=(700+rs*.55)/sr;if(tp2>1)tp2-=1;t+=Math.sin(6.2832*tp2)*(.25+.75*ls)*.012*Math.min(rs/4500,1.3);}
@@ -179,7 +181,12 @@ function mkAudio(){
   }
  };
  const comp=ctx.createDynamicsCompressor();
- node.connect(comp);comp.connect(ctx.destination);
+ const fl=ctx.createBiquadFilter();fl.type='lowshelf';fl.frequency.value=180;
+ const fp=ctx.createBiquadFilter();fp.type='peaking';fp.frequency.value=95;fp.Q.value=1.2;
+ const fq=ctx.createBiquadFilter();fq.type='lowpass';fq.frequency.value=20000;fq.Q.value=.7;
+ const gn=ctx.createGain();
+ node.connect(fl);fl.connect(fp);fp.connect(fq);fq.connect(gn);gn.connect(comp);comp.connect(ctx.destination);
+ FX={ls:fl,pk:fp,lp:fq,g:gn};applyView();
 }
 
 /* ---------- vehicle model ---------- */
@@ -305,6 +312,9 @@ if(mj)h+='<text x="'+(150+110*sn)+'" y="'+(150+110*cs+6)+'" text-anchor="middle"
 $('ticks').innerHTML=h;}
 $('rev').oncontextmenu=e=>e.preventDefault();
 $('vol').oninput=e=>{A.vol=e.target.value/100;};
+$('wnd').oninput=e=>{A.wnd=e.target.value/200;};
+function applyView(){if(!FX)return;const t=ctx.currentTime;FX.lp.frequency.setTargetAtTime(inside?1800:20000,t,.08);FX.ls.gain.setTargetAtTime(inside?7:0,t,.08);FX.pk.gain.setTargetAtTime(inside?5:0,t,.08);FX.g.gain.setTargetAtTime(inside?1.1:1,t,.08);}
+document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{inside=b.dataset.v==='in';document.querySelectorAll('[data-v]').forEach(x=>x.setAttribute('aria-pressed',x===b));applyView();});
 let sw=null;
 function setMan(v){$('src').value='manual';$('man').value=v;$('manV').textContent=Math.round(v);if(!on)$('start').click();}
 function stopSw(){if(sw){clearInterval(sw);sw=null;$('sweep').textContent='Run full acceleration';}}
